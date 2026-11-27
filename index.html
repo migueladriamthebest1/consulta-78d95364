@@ -1,0 +1,28 @@
+<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow"><link rel="apple-touch-icon" sizes="180x180" href="icono.png"><meta name="apple-mobile-web-app-title" content="Los Andes"><link rel="icon" href="icono.png"><link rel="manifest" href="app.webmanifest"><title>Los Andes</title>
+<style>body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#0B5CAD;font-family:system-ui,sans-serif;color:#1b2733}
+form{background:#fff;border-radius:16px;padding:24px;width:min(340px,88vw)}h1{font-size:20px;margin:0 0 14px}
+input[type=password]{width:100%;box-sizing:border-box;font-size:18px;padding:12px;border:1px solid #9db4cc;border-radius:10px}
+label{display:block;margin:12px 0;font-size:14px}button{width:100%;font-size:17px;padding:12px;border:0;border-radius:10px;background:#0B5CAD;color:#fff}#e{color:#a30000;font-weight:700;min-height:20px;margin-top:10px}</style></head><body>
+<form id="f"><h1>Escriba la clave</h1><input id="p" type="password" autocomplete="current-password" aria-label="Clave"><label><input id="r" type="checkbox"> Recordar en este celular</label><button>Entrar</button><div id="e" role="alert"></div></form>
+<script>
+(()=>{
+const E=document.getElementById('e'),b64=u=>btoa(String.fromCharCode(...u)),de=s=>Uint8Array.from(atob(s),c=>c.charCodeAt(0));
+const guarda={get(){try{return localStorage.getItem('k')}catch(x){return null}},set(v){try{v?localStorage.setItem('k',v):localStorage.removeItem('k')}catch(x){}}};
+let dat;const bajar=async()=>{const r=await fetch('datos.bin?t='+Date.now(),{cache:'no-store'});if(!r.ok)throw Error('red');dat=new Uint8Array(await r.arrayBuffer())};
+async function abrir(k){ // k: 64 bytes (AES + HMAC). Archivo: sal16 | iv16 | mac32 | cifrado
+  const iv=dat.slice(16,32),mac=dat.slice(32,64),ct=dat.slice(64),m=new Uint8Array(32+ct.length);m.set(dat.slice(0,32));m.set(ct,32);
+  const hk=await crypto.subtle.importKey('raw',k.slice(32),{name:'HMAC',hash:'SHA-256'},false,['verify']);
+  if(!await crypto.subtle.verify('HMAC',hk,mac,m))return false;
+  const ak=await crypto.subtle.importKey('raw',k.slice(0,32),'AES-CBC',false,['decrypt']);
+  const z=await crypto.subtle.decrypt({name:'AES-CBC',iv},ak,ct);
+  const h=await new Response(new Blob([z]).stream().pipeThrough(new DecompressionStream('gzip'))).text();
+  try{sessionStorage.setItem('kv',b64(k))}catch(x){} // la app la usa para cifrar las preguntas en vivo; se borra al cerrar
+  document.open();document.write(h);document.close();return true}
+async function derivar(t){const b=await crypto.subtle.importKey('raw',new TextEncoder().encode(t),'PBKDF2',false,['deriveBits']);
+  return new Uint8Array(await crypto.subtle.deriveBits({name:'PBKDF2',hash:'SHA-256',salt:dat.slice(0,16),iterations:600000},b,512))}
+document.getElementById('f').onsubmit=async ev=>{ev.preventDefault();E.textContent='Abriendo…';const rec=document.getElementById('r').checked;
+  try{await bajar();const k=await derivar(document.getElementById('p').value);if(rec)guarda.set(b64(k));if(!await abrir(k)){guarda.set(null);E.textContent='Clave incorrecta'}}catch(x){E.textContent='No se pudo abrir. Revise el internet e intente de nuevo.'}};
+(async()=>{const g=guarda.get();if(!g)return;try{await bajar();if(!await abrir(de(g)))guarda.set(null)}catch(x){E.textContent='No se pudo abrir. Revise el internet.'}})();
+})();
+</script></body></html>
